@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Instagram Unfollowers</title>
+  <!-- Tailwind (CDN for quick deploys) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="Local-only Instagram followers vs following checker. Drag & drop your export files to see who isn't following you back."/>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-white to-gray-50">
+  <div id="root"></div>
+
+  <!-- React 18 + ReactDOM UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel Standalone to transpile JSX in the browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Your App Code -->
+  <script type="text/babel">
+
+// Local-only, client-side tool to compare two Instagram export HTML files
+// (followers.html and following.html) and list who isn't following you back.
+//
+// How to use:
+// 1) Go to Instagram > Settings > Accounts Center > Your information and permissions > Download your information
+//    or use your previously saved "followers_1.html" and "following_1.html" files from Instagram.
+// 2) Drag & drop or select the two HTML files below. Order doesn't matter; you can label them.
+// 3) The app parses usernames, compares sets, and shows diffs. Nothing is uploaded — all in your browser.
+
+function HelpPopup() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-block ml-2 align-middle">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center text-sm font-semibold hover:bg-gray-100"
+        title="How to get your files"
+        aria-label="How to get your files"
+      >
+        ?
+      </button>
+      {open && (
+        <div className="absolute z-10 right-0 mt-2 w-80 bg-white border border-gray-200 rounded-2xl shadow-lg p-4 text-left text-sm leading-relaxed">
+          <h3 className="font-semibold mb-2 text-base">How to get your Instagram files</h3>
+          <ol className="list-decimal list-inside space-y-1">
+            <li>Instagram → Settings → <span className="font-medium">Meta Account Center</span>.</li>
+            <li><span className="font-medium">Your information & permissions</span> → <span className="font-medium">Create export</span> → choose <span className="font-medium">Instagram profile</span> → <span className="font-medium">Export to device</span>.</li>
+            <li><span className="font-medium">Customize information</span> → <span className="font-medium">Clear all</span> → select only <span className="font-medium">Followers & Following</span> under <span className="font-medium">Connections</span> → <span className="font-medium">Save</span>.</li>
+            <li>Set <span className="font-medium">Date Range</span> to <span className="font-medium">All time</span>.</li>
+            <li>Click <span className="font-medium">Start export</span>.</li>
+            <li>Download & unzip; then drop the files below:
+              <ul className="list-disc list-inside ml-4 mt-1">
+                <li><strong>following.html</strong></li>
+                <li><strong>followers_1.html</strong></li>
+              </ul>
+              <div className="mt-1">(HTML or JSON also works.)</div>
+            </li>
+          </ol>
+          <p className="mt-3 text-xs text-gray-500">Tip: Re-download anytime to refresh your list — files stay on your device.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function classNames(...arr) {
+  return arr.filter(Boolean).join(" ");
+}
+
+function useFileText() {
+  const [name, setName] = useState("");
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+
+  const onFiles = async (files) => {
+    setError("");
+    const file = files?.[0];
+    if (!file) return;
+    setName(file.name);
+    try {
+      const reader = new FileReader();
+      const txt = await new Promise((resolve, reject) => {
+        reader.onerror = () => reject(new Error("Failed to read file."));
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.readAsText(file);
+      });
+      setText(txt);
+    } catch (e) {
+      setError(e?.message || "Could not read file");
+    }
+  };
+
+  return { name, text, error, onFiles };
+}
+
+// Normalize potential username strings and URLs to a canonical username
+function normalizeUsername(raw) {
+  if (!raw) return "";
+  let s = String(raw).trim();
+  s = s.replace(/^@+/, "");
+  // If looks like a URL, extract pathname first segment (handle /_u/<user>)
+  try {
+    if (/^https?:\/\//i.test(s)) {
+      const url = new URL(s);
+      // only accept instagram domains or bare paths
+      s = url.pathname || s;
+    }
+  } catch {}
+  // Work with the path cleanly
+  s = s.split("?")[0].split("#")[0];
+  s = s.replace(/^\/+/, "");
+  let parts = s.split("/").filter(Boolean);
+  // Instagram exports often use /_u/<username>
+  if (parts[0] && parts[0].toLowerCase() === "_u" && parts[1]) {
+    s = parts[1];
+  } else {
+    s = parts[0] || "";
+  }
+  // Disallow common non-user paths/words
+  const banned = new Set([
+    "explore","accounts","about","privacy","terms","p","reels","stories","reel","directory","web","channels","downloads","help","challenge","developer","legal","blog","press","business","creators","email","support","graph","oauth","api","policies","language","ads","features","meta","facebook","instagram","_u"
+  ]);
+  if (banned.has((s || "").toLowerCase())) return "";
+  // Instagram username rules: letters, numbers, periods, underscores; up to 30 chars
+  const m = (s || "").match(/^[a-zA-Z0-9._]{1,30}$/);
+  if (!m) return "";
+  return s.toLowerCase();
+}
+
+function detectKind(text, mime = "") {
+  const t = text.trim();
+  if (mime.includes("json")) return "json";
+  if (mime.includes("html")) return "html";
+  if (t.startsWith("{") || t.startsWith("[")) return "json";
+  if (t.toLowerCase().includes("<html") || t.toLowerCase().includes("<body")) return "html";
+  return "unknown";
+}
+
+function parseInstagramJson(text) {
+  const usernames = new Set();
+  try {
+    const data = JSON.parse(text);
+    const visit = (node) => {
+      if (!node) return;
+      if (Array.isArray(node)) { for (const x of node) visit(x); return; }
+      if (typeof node === "object") {
+        if (typeof node.href === "string") {
+          const u = normalizeUsername(node.href);
+          if (u) usernames.add(u);
+        }
+        if (typeof node.username === "string") {
+          const u = normalizeUsername(node.username);
+          if (u) usernames.add(u);
+        }
+        if (typeof node.value === "string") {
+          const u = normalizeUsername(node.value);
+          if (u) usernames.add(u);
+        }
+        for (const k in node) visit(node[k]);
+        return;
+      }
+    };
+    visit(data);
+  } catch (e) {
+    console.warn("JSON parse error", e);
+  }
+  return usernames;
+}
+
+function parseInstagram(text) {
+  try {
+    const kind = detectKind(text || "");
+    if (kind === "json") return parseInstagramJson(text || "");
+    return parseInstagramHtml(text || "");
+  } catch (e) {
+    console.warn("parseInstagram failed", e);
+    return new Set();
+  }
+}
+
+function parseInstagramHtml(html) {
+  const usernames = new Set();
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const anchors = Array.from(doc.querySelectorAll("a[href]"));
+    for (const a of anchors) {
+      const href = a.getAttribute("href") || "";
+      if (/instagram\.com\//i.test(href) || /^\/[A-Za-z0-9._]+\/?$/.test(href.trim())) {
+        const u = normalizeUsername(href);
+        if (u) usernames.add(u);
+      }
+    }
+  } catch (e) {
+    console.warn("Parse error", e);
+  }
+  return usernames;
+}
+
+function downloadText(filename, content) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function openProfile(url) {
+  // Simple, safe opener; no fallback text to avoid syntax issues
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  if (w) w.opener = null;
+}
+
+function downloadCSV(filename, rows) {
+  // rows: Array of arrays. We generate a clean CSV with BOM for Excel.
+  const escape = (val) => {
+    let s = String(val ?? "");
+    if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  const csvBody = rows.map(r => r.map(escape).join(",")).join("\r\n");
+  const bom = "\uFEFF"; // Excel-friendly UTF-8 BOM
+  const blob = new Blob([bom + csvBody], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function makeRows(list) {
+  return [["username", "profile_url"], ...list.map(u => [u, `https://www.instagram.com/${u}/`])];
+}
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try { await navigator.clipboard.writeText(text || ""); setCopied(true); setTimeout(()=>setCopied(false), 1200);} catch {}
+      }}
+      className="px-3 py-2 rounded-xl shadow text-sm border hover:shadow-md"
+    >{copied ? "Copied" : "Copy"}</button>
+  );
+}
+
+function DropZone({ label, onFiles, name, variant = "default" }) {
+  const ref = useRef(null);
+  const [hover, setHover] = useState(false);
+  const palette = {
+    following: {
+      base: "border-sky-300/70 bg-sky-50/40",
+      hover: "border-sky-400 bg-sky-50",
+      badge: "bg-sky-100 text-sky-800 border-sky-200",
+    },
+    followers: {
+      base: "border-emerald-300/70 bg-emerald-50/40",
+      hover: "border-emerald-400 bg-emerald-50",
+      badge: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    },
+    default: {
+      base: "border-black/20",
+      hover: "border-black/60 bg-black/5",
+      badge: "bg-black/10 text-black/80 border-black/20",
+    },
+  }[variant] || {};
+
+  return (
+    <div
+      onDragOver={(e)=>{e.preventDefault(); setHover(true);}}
+      onDragLeave={()=>setHover(false)}
+      onDrop={(e)=>{e.preventDefault(); setHover(false); onFiles(e.dataTransfer.files);}}
+      className={classNames(
+        "border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors",
+        hover ? palette.hover : palette.base
+      )}
+      onClick={()=>ref.current?.click()}
+      role="button"
+      aria-label={`Upload ${label}`}
+      title="Drop .html or .json exports from Instagram"
+    >
+      <input ref={ref} type="file" accept="text/html,.html,application/json,.json,text/plain,.txt" className="hidden" onChange={(e)=>onFiles(e.target.files)} />
+      <div className={classNames("inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs mb-3", palette.badge)}>
+        <span className="font-medium">{label}</span>
+      </div>
+      <div className="text-sm">Drop HTML/JSON here or click to choose</div>
+      {name && <div className="mt-2 text-xs text-black/70">Loaded: <span className="font-mono">{name}</span></div>}
+    </div>
+  );
+}
+
+function ResultsTable({ title, items }) {
+  const [q, setQ] = useState("");
+  const filtered = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return items;
+    return items.filter(x => x.includes(t));
+  }, [q, items]);
+
+  return (
+    <div className="bg-white rounded-2xl shadow p-4 border">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <div className="text-sm font-semibold">{title}</div>
+          <div className="text-xs text-black/60">{filtered.length} shown • {items.length} total</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            className="border rounded-xl px-3 py-2 text-sm"
+            placeholder="Filter usernames…"
+            value={q}
+            onChange={(e)=>setQ(e.target.value)}
+          />
+          <CopyButton text={filtered.join("\n")} />
+          <button
+            className="px-3 py-2 rounded-xl shadow text-sm border hover:shadow-md"
+            onClick={() => downloadCSV(title.split(' ').join('_').toLowerCase() + '.csv', makeRows(filtered))}
+          >Download CSV</button>
+        </div>
+      </div>
+      <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {filtered.map(u => (
+          <li key={u} className="border rounded-xl text-sm hover:bg-gray-50 focus-within:ring-2 focus-within:ring-black/20">
+            <a
+              href={`https://www.instagram.com/${u}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full px-3 py-2 flex items-center justify-between gap-2 block"
+              aria-label={`Open @${u} on Instagram in a new tab`}
+            >
+              <span className="truncate">@{u}</span>
+              <span className="text-xs text-black/50">open ↗</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function App() {
+  const following = useFileText(); // the accounts YOU follow
+  const followers = useFileText(); // the accounts that follow YOU
+
+  const followingSet = useMemo(() => parseInstagram(following.text), [following.text]);
+  const followersSet = useMemo(() => parseInstagram(followers.text), [followers.text]);
+
+  const followingArr = useMemo(() => Array.from(followingSet).sort(), [followingSet]);
+  const followersArr = useMemo(() => Array.from(followersSet).sort(), [followersSet]);
+
+  const notFollowingYouBack = useMemo(() => {
+    // people you follow that do NOT follow you
+    const out = [];
+    for (const u of followingSet) if (!followersSet.has(u)) out.push(u);
+    return out.sort();
+  }, [followingSet, followersSet]);
+
+  const youDontFollowBack = useMemo(() => {
+    // people who follow you but you don't follow back
+    const out = [];
+    for (const u of followersSet) if (!followingSet.has(u)) out.push(u);
+    return out.sort();
+  }, [followingSet, followersSet]);
+
+  const mutuals = useMemo(() => {
+    const out = [];
+    for (const u of followersSet) if (followingSet.has(u)) out.push(u);
+    return out.sort();
+  }, [followingSet, followersSet]);
+
+  const hasData = followingArr.length || followersArr.length;
+
+  const exportAll = () => {
+    const report = [
+      `Following: ${followingArr.length}`,
+      `Followers: ${followersArr.length}`,
+      `Not following you back: ${notFollowingYouBack.length}`,
+      `You don't follow back: ${youDontFollowBack.length}`,
+      "",
+      "# Not following you back:",
+      ...notFollowingYouBack,
+      "",
+      "# You don't follow back:",
+      ...youDontFollowBack,
+      "",
+      "# Mutuals:",
+      ...mutuals
+    ].join("\n");
+    downloadText("instagram_follow_check_report.txt", report);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 text-gray-900">
+      <div className="max-w-5xl mx-auto p-6">
+        <header className="mb-8 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Instagram Unfollowers</h1>
+            <HelpPopup />
+          </div>
+          <p className="mt-3 text-base text-black/70 max-w-2xl mx-auto leading-relaxed">
+            Catch whoever unfollows you — <span className="font-medium text-emerald-700">all processing happens locally in your browser</span>.
+          </p>
+        </header>
+
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="bg-white rounded-2xl shadow p-4 border">
+            <h2 className="font-semibold mb-2">Your Following (accounts you follow)</h2>
+            <DropZone label="Following — drop file" variant="following" onFiles={following.onFiles} name={following.name} />
+            {following.error && <p className="text-red-600 text-sm mt-2">{following.error}</p>}
+            <div className="text-xs text-black/60 mt-2">Parsed: <span className="font-semibold">{followingArr.length}</span> accounts</div>
+          </div>
+          <div className="bg-white rounded-2xl shadow p-4 border">
+            <h2 className="font-semibold mb-2">Your Followers (accounts following you)</h2>
+            <DropZone label="Followers — drop file" variant="followers" onFiles={followers.onFiles} name={followers.name} />
+            {followers.error && <p className="text-red-600 text-sm mt-2">{followers.error}</p>}
+            <div className="text-xs text-black/60 mt-2">Parsed: <span className="font-semibold">{followersArr.length}</span> accounts</div>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-2xl shadow p-4 border mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Stat label="Following" value={followingArr.length} />
+            <Stat label="Followers" value={followersArr.length} />
+            <Stat label="Not following you back" value={notFollowingYouBack.length} emphasis />
+            <Stat label="You don't follow back" value={youDontFollowBack.length} />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
+              onClick={exportAll}
+              disabled={!hasData}
+            >Export summary</button>
+            <button
+              className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
+              onClick={() => downloadCSV('not_following_you_back.csv', makeRows(notFollowingYouBack))}
+              disabled={!notFollowingYouBack.length}
+            >Download “Not following you back” CSV</button>
+            <button
+              className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
+              onClick={() => downloadCSV('you_dont_follow_back.csv', makeRows(youDontFollowBack))}
+              disabled={!youDontFollowBack.length}
+            >Download “You don't follow back” CSV</button>
+          </div>
+          <p className="text-xs text-black/50 mt-3">Tip: To keep a history, export the summary after each run; filenames include counts and you can commit them to your personal log.</p>
+        </section>
+
+        {notFollowingYouBack.length > 0 && (
+          <div className="mb-6">
+            <ResultsTable title="Not following you back" items={notFollowingYouBack} />
+          </div>
+        )}
+
+        {youDontFollowBack.length > 0 && (
+          <div className="mb-6">
+            <ResultsTable title="You don't follow back" items={youDontFollowBack} />
+          </div>
+        )}
+
+        {mutuals.length > 0 && (
+          <div className="mb-10">
+            <details className="bg-white rounded-2xl shadow p-4 border">
+              <summary className="cursor-pointer select-none font-semibold">Mutuals ({mutuals.length})</summary>
+              <div className="mt-3">
+                <ResultsTable title="Mutuals" items={mutuals} />
+              </div>
+            </details>
+          </div>
+        )}
+
+        <footer className="text-xs text-black/50">
+          <p>Privacy: Files never leave your device. Parsing is heuristic and aims to support most Instagram export formats. If your export looks different, paste a small sample and we can extend the parser.</p>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, emphasis }) {
+  return (
+    <div className={classNames("rounded-2xl border p-4 bg-gray-50", emphasis && "ring-1 ring-rose-300/60 bg-rose-50") }>
+      <div className="text-xs text-black/60">{label}</div>
+      <div className="text-2xl font-semibold leading-tight">{value}</div>
+    </div>
+  );
+}
+
+    // Mount the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
