@@ -12,22 +12,6 @@
 </head>
 <body class="min-h-screen bg-gradient-to-b from-white to-gray-50">
   <div id="root"></div>
-
-  <script>
-    (function() {
-      const box = document.getElementById('errorBox');
-      function show(err) {
-        box.style.display = 'block';
-        const msg = (err && err.stack) ? err.stack : String(err);
-        box.textContent += "\n" + msg + "\n";
-        console.error(err);
-      }
-      window.addEventListener('error', function(e) { show(e.error || e.message); });
-      window.addEventListener('unhandledrejection', function(e) { show(e.reason || e); });
-      window.__showErr = show;
-    })();
-  </script>
-
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -513,7 +497,11 @@ function Stat({ label, value, emphasis }) {
       const root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(<App />);
     } catch (e) {
-      window.__showErr(e);
+        console.error(e);
+        const bar = document.createElement('div');
+        bar.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#fee2e2;color:#7f1d1d;padding:8px 12px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;z-index:9999;';
+        bar.textContent = 'App failed to start: ' + (e && e.message ? e.message : String(e));
+        document.body.appendChild(bar);
     }
   </script>
 </body>
