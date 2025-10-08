@@ -5,19 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Instagram Unfollowers</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    #errorBox { display:none; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-  </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-white to-gray-50">
   <div id="root"></div>
+
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- JSX with env + react presets -->
+  <!-- JSX with env + react presets; add React hook aliases for UMD build -->
   <script type="text/babel" data-presets="env,react">
+    const {
+      useState,
+      useEffect,
+      useMemo,
+      useRef,
+      useCallback,
+      useId,
+      useLayoutEffect,
+      useReducer,
+      createContext,
+      useContext
+    } = React;
 
 // Local-only, client-side tool to compare two Instagram export HTML files
 // (followers.html and following.html) and list who isn't following you back.
@@ -103,7 +112,7 @@ function normalizeUsername(raw) {
   try {
     if (/^https?:\/\//i.test(s)) {
       const url = new URL(s);
-      // only accept Instagram domains or bare paths
+      // only accept instagram domains or bare paths
       s = url.pathname || s;
     }
   } catch {}
@@ -497,11 +506,8 @@ function Stat({ label, value, emphasis }) {
       const root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(<App />);
     } catch (e) {
-        console.error(e);
-        const bar = document.createElement('div');
-        bar.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#fee2e2;color:#7f1d1d;padding:8px 12px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;z-index:9999;';
-        bar.textContent = 'App failed to start: ' + (e && e.message ? e.message : String(e));
-        document.body.appendChild(bar);
+      window.__showErr(e);
+
     }
   </script>
 </body>
