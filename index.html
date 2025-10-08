@@ -4,22 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Instagram Unfollowers</title>
-  <!-- Tailwind (CDN for quick deploys) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <meta name="description" content="Local-only Instagram followers vs following checker. Drag & drop your export files to see who isn't following you back."/>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-white to-gray-50">
   <div id="root"></div>
 
-  <!-- React 18 + ReactDOM UMD -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-  <!-- Babel Standalone to transpile JSX in the browser -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Your App Code -->
-  <script type="text/babel">
+  <!-- JSX needs Babel preset -->
+  <script type="text/babel" data-presets="react">
 
 // Local-only, client-side tool to compare two Instagram export HTML files
 // (followers.html and following.html) and list who isn't following you back.
@@ -494,7 +489,6 @@ function Stat({ label, value, emphasis }) {
   );
 }
 
-    // Mount the app
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
