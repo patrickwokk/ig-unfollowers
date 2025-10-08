@@ -5,16 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Instagram Unfollowers</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #errorBox { display:none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-white to-gray-50">
+  <div class="max-w-2xl mx-auto p-4">
+    <h1 class="text-2xl font-semibold mb-2">Instagram Unfollowers</h1>
+    <p class="text-gray-600 mb-4">If you see a blank page, errors will appear below.</p>
+    <div id="errorBox" class="bg-red-50 border border-red-200 text-red-800 rounded p-3 mb-4 mono whitespace-pre-wrap"></div>
+  </div>
   <div id="root"></div>
+
+  <script>
+    (function() {
+      const box = document.getElementById('errorBox');
+      function show(err) {
+        box.style.display = 'block';
+        const msg = (err && err.stack) ? err.stack : String(err);
+        box.textContent += "\n" + msg + "\n";
+        console.error(err);
+      }
+      window.addEventListener('error', function(e) { show(e.error || e.message); });
+      window.addEventListener('unhandledrejection', function(e) { show(e.reason || e); });
+      window.__showErr = show;
+    })();
+  </script>
 
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- JSX needs Babel preset -->
-  <script type="text/babel" data-presets="react">
+  <!-- JSX with env + react presets -->
+  <script type="text/babel" data-presets="env,react">
 
 // Local-only, client-side tool to compare two Instagram export HTML files
 // (followers.html and following.html) and list who isn't following you back.
@@ -489,8 +513,13 @@ function Stat({ label, value, emphasis }) {
   );
 }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+
+    try {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    } catch (e) {
+      window.__showErr(e);
+    }
   </script>
 </body>
 </html>
