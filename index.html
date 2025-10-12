@@ -1,10 +1,26 @@
 <!DOCTYPE html>
+// Local-only, client-side tool to compare two Instagram export HTML files
+// (followers.html and following.html) and list who isn't following you back.
+//
+// How to use:
+// 1) Go to Instagram > Settings > Accounts Center > Your information and permissions > Download your information
+//    or use your previously saved "followers_1.html" and "following_1.html" files from Instagram.
+// 2) Drag & drop or select the two HTML files below. Order doesn't matter; you can label them.
+// 3) The app parses usernames, compares sets, and shows diffs. Nothing is uploaded — all in your browser.
+
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Instagram Unfollowers</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Mobile-safe title: prevent bad wrapping while allowing graceful shrink */
+    h1.app-title { word-break: keep-all; }
+    @media (max-width: 420px) {
+      h1.app-title { font-size: 1.5rem; line-height: 1.2; }
+    }
+  </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-white to-gray-50">
   <div id="root"></div>
@@ -28,45 +44,406 @@
       useContext
     } = React;
 
-// Local-only, client-side tool to compare two Instagram export HTML files
-// (followers.html and following.html) and list who isn't following you back.
-//
-// How to use:
-// 1) Go to Instagram > Settings > Accounts Center > Your information and permissions > Download your information
-//    or use your previously saved "followers_1.html" and "following_1.html" files from Instagram.
-// 2) Drag & drop or select the two HTML files below. Order doesn't matter; you can label them.
-// 3) The app parses usernames, compares sets, and shows diffs. Nothing is uploaded — all in your browser.
+    const LangContext = createContext({ lang: "en", setLang: () => {}, t: (k)=>k });
+
+    const STRINGS = {
+      en: {
+        title: "Instagram Unfollowers",
+        subtitle_1: "Catch whoever unfollows you — ",
+        subtitle_2: "all processing happens locally in your browser",
+        your_following: "Your Following (accounts you follow)",
+        drop_following: "Following — drop file",
+        parsed: "Parsed: ",
+        accounts: "accounts",
+        your_followers: "Your Followers (accounts following you)",
+        drop_followers: "Followers — drop file",
+        stat_following: "Following",
+        stat_followers: "Followers",
+        stat_nfub: "Not following you back",
+        stat_ydfb: "You don't follow back",
+        export_summary: "Export summary",
+        download_nfub: "Download “Not following you back” CSV",
+        download_ydfb: "Download “You don't follow back” CSV",
+        tip_history: "Tip: To keep a history, export the summary after each run; filenames include counts and you can commit them to your personal log.",
+        filter_placeholder: "Filter usernames…",
+        copy: "Copy",
+        copied: "Copied",
+        open_arrow: "open ↗",
+        mutuals_summary: "Mutuals",
+        privacy_footer: "Privacy: Files never leave your device. Parsing is heuristic and aims to support most Instagram export formats. If your export looks different, paste a small sample and we can extend the parser.",
+        help_title: "How to get your Instagram files",
+        help_1: "Instagram → Settings → ",
+        help_1_b1: "Meta Account Center",
+        help_2_b1: "Your information & permissions",
+        help_2_b2: "Create export",
+        help_2_b3: "Instagram profile",
+        help_2_b4: "Export to device",
+        help_3_b1: "Customize information",
+        help_3_b2: "Clear all",
+        help_3_b3: "Followers & Following",
+        help_3_b4: "Connections",
+        help_3_b5: "Save",
+        help_4_b1: "Date Range",
+        help_4_b2: "All time",
+        help_5_b1: "Start export",
+        help_6: "Download & unzip; then drop the files below:",
+        help_6_f1: "following.html",
+        help_6_f2: "followers_1.html",
+        help_6_tail: "(HTML or JSON also works.)",
+        help_tip: "Tip: Re-download anytime to refresh your list — files stay on your device.",
+        how_to_files: "How to get your files",
+        upload_aria: "Upload",
+        upload_title: "Drop .html or .json exports from Instagram",
+        loaded: "Loaded: ",
+        shown: "shown",
+        total: "total",
+        language: "Language",
+        lang_en: "English",
+        lang_es: "Spanish",
+        lang_de: "German",
+        lang_ko: "Korean",
+        lang_id: "Indonesian",
+        lang_ja: "Japanese",
+        globe_aria: "Change language"
+      },
+      es: {
+        title: "Dejados de seguir en Instagram",
+        subtitle_1: "Detecta quién te dejó de seguir — ",
+        subtitle_2: "todo el procesamiento ocurre localmente en tu navegador",
+        your_following: "Tus seguidos (cuentas que sigues)",
+        drop_following: "Seguidos — suelta el archivo",
+        parsed: "Analizados: ",
+        accounts: "cuentas",
+        your_followers: "Tus seguidores (cuentas que te siguen)",
+        drop_followers: "Seguidores — suelta el archivo",
+        stat_following: "Seguidos",
+        stat_followers: "Seguidores",
+        stat_nfub: "No te siguen de vuelta",
+        stat_ydfb: "No sigues de vuelta",
+        export_summary: "Exportar resumen",
+        download_nfub: "Descargar CSV “No te siguen de vuelta”",
+        download_ydfb: "Descargar CSV “No sigues de vuelta”",
+        tip_history: "Consejo: Para mantener un historial, exporta el resumen después de cada ejecución; los nombres de archivo incluyen conteos.",
+        filter_placeholder: "Filtrar usuarios…",
+        copy: "Copiar",
+        copied: "Copiado",
+        open_arrow: "abrir ↗",
+        mutuals_summary: "Mutuos",
+        privacy_footer: "Privacidad: Los archivos nunca salen de tu dispositivo. El análisis es heurístico y admite la mayoría de los formatos de exportación de Instagram.",
+        help_title: "Cómo obtener tus archivos de Instagram",
+        help_1: "Instagram → Configuración → ",
+        help_1_b1: "Centro de cuentas de Meta",
+        help_2_b1: "Tu información y permisos",
+        help_2_b2: "Crear exportación",
+        help_2_b3: "Perfil de Instagram",
+        help_2_b4: "Exportar al dispositivo",
+        help_3_b1: "Personalizar información",
+        help_3_b2: "Borrar todo",
+        help_3_b3: "Seguidores y Seguidos",
+        help_3_b4: "Conexiones",
+        help_3_b5: "Guardar",
+        help_4_b1: "Rango de fechas",
+        help_4_b2: "Todo el tiempo",
+        help_5_b1: "Iniciar exportación",
+        help_6: "Descarga y descomprime; luego suelta los archivos abajo:",
+        help_6_f1: "following.html",
+        help_6_f2: "followers_1.html",
+        help_6_tail: "(HTML o JSON también funcionan.)",
+        help_tip: "Consejo: Vuelve a descargar en cualquier momento para actualizar tu lista; los archivos permanecen en tu dispositivo.",
+        how_to_files: "Cómo obtener tus archivos",
+        upload_aria: "Subir",
+        upload_title: "Suelta exportaciones .html o .json de Instagram",
+        loaded: "Cargado: ",
+        shown: "mostrados",
+        total: "total",
+        language: "Idioma",
+        lang_en: "Inglés",
+        lang_es: "Español",
+        lang_de: "Alemán",
+        lang_ko: "Coreano",
+        lang_id: "Indonesio",
+        lang_ja: "Japonés",
+        globe_aria: "Cambiar idioma"
+      },
+      de: {
+        title: "Instagram Unfollowers",
+        subtitle_1: "Finde heraus, wer dir nicht mehr folgt — ",
+        subtitle_2: "alle Verarbeitung erfolgt lokal in deinem Browser",
+        your_following: "Deinen Gefolgten (Konten, denen du folgst)",
+        drop_following: "Gefolgte — Datei ablegen",
+        parsed: "Analysiert: ",
+        accounts: "Konten",
+        your_followers: "Deine Follower (Konten, die dir folgen)",
+        drop_followers: "Follower — Datei ablegen",
+        stat_following: "Gefolgt",
+        stat_followers: "Follower",
+        stat_nfub: "Folgen dir nicht zurück",
+        stat_ydfb: "Du folgst nicht zurück",
+        export_summary: "Zusammenfassung exportieren",
+        download_nfub: "CSV „Folgen dir nicht zurück“ herunterladen",
+        download_ydfb: "CSV „Du folgst nicht zurück“ herunterladen",
+        tip_history: "Tipp: Exportiere nach jedem Lauf die Zusammenfassung, um eine Historie zu führen.",
+        filter_placeholder: "Benutzernamen filtern…",
+        copy: "Kopieren",
+        copied: "Kopiert",
+        open_arrow: "öffnen ↗",
+        mutuals_summary: "Gegenseitig",
+        privacy_footer: "Datenschutz: Dateien verlassen dein Gerät nicht. Das Parsen ist heuristisch und unterstützt die meisten Exportformate von Instagram.",
+        help_title: "So erhältst du deine Instagram-Dateien",
+        help_1: "Instagram → Einstellungen → ",
+        help_1_b1: "Meta-Konto-Center",
+        help_2_b1: "Deine Informationen & Berechtigungen",
+        help_2_b2: "Export erstellen",
+        help_2_b3: "Instagram‑Profil",
+        help_2_b4: "Auf Gerät exportieren",
+        help_3_b1: "Informationen anpassen",
+        help_3_b2: "Alle löschen",
+        help_3_b3: "Follower & Gefolgte",
+        help_3_b4: "Verbindungen",
+        help_3_b5: "Speichern",
+        help_4_b1: "Zeitraum",
+        help_4_b2: "Gesamte Zeit",
+        help_5_b1: "Export starten",
+        help_6: "Herunterladen & entpacken; dann unten die Dateien ablegen:",
+        help_6_f1: "following.html",
+        help_6_f2: "followers_1.html",
+        help_6_tail: "(HTML oder JSON funktionieren ebenfalls.)",
+        help_tip: "Tipp: Lade jederzeit neu herunter, um die Liste zu aktualisieren — Dateien bleiben auf deinem Gerät.",
+        how_to_files: "So erhältst du deine Dateien",
+        upload_aria: "Hochladen",
+        upload_title: "Lege .html- oder .json‑Instagram-Exporte ab",
+        loaded: "Geladen: ",
+        shown: "angezeigt",
+        total: "insgesamt",
+        language: "Sprache",
+        lang_en: "Englisch",
+        lang_es: "Spanisch",
+        lang_de: "Deutsch",
+        lang_ko: "Koreanisch",
+        lang_id: "Indonesisch",
+        lang_ja: "Japanisch",
+        globe_aria: "Sprache ändern"
+      },
+      ko: {
+        title: "인스타그램 언팔로워",
+        subtitle_1: "누가 언팔로우했는지 확인하세요 — ",
+        subtitle_2: "모든 처리는 브라우저 로컬에서 이루어집니다",
+        your_following: "내가 팔로우 중 (내가 팔로우하는 계정)",
+        drop_following: "팔로잉 — 파일 놓기",
+        parsed: "파싱됨: ",
+        accounts: "계정",
+        your_followers: "내 팔로워 (나를 팔로우하는 계정)",
+        drop_followers: "팔로워 — 파일 놓기",
+        stat_following: "팔로잉",
+        stat_followers: "팔로워",
+        stat_nfub: "나를 팔로우하지 않는 계정",
+        stat_ydfb: "내가 팔로우하지 않는 계정",
+        export_summary: "요약 내보내기",
+        download_nfub: "CSV “나를 팔로우하지 않는 계정” 다운로드",
+        download_ydfb: "CSV “내가 팔로우하지 않는 계정” 다운로드",
+        tip_history: "팁: 실행할 때마다 요약을 내보내 기록을 남기세요.",
+        filter_placeholder: "사용자 이름 필터…",
+        copy: "복사",
+        copied: "복사됨",
+        open_arrow: "열기 ↗",
+        mutuals_summary: "상호 팔로우",
+        privacy_footer: "개인정보: 파일은 기기를 떠나지 않습니다. 파서는 휴리스틱 기반이며 대부분의 Instagram 내보내기 형식을 지원합니다.",
+        help_title: "Instagram 파일 받는 방법",
+        help_1: "Instagram → 설정 → ",
+        help_1_b1: "Meta 계정 센터",
+        help_2_b1: "내 정보 및 권한",
+        help_2_b2: "내보내기 생성",
+        help_2_b3: "Instagram 프로필",
+        help_2_b4: "기기로 내보내기",
+        help_3_b1: "정보 사용자 지정",
+        help_3_b2: "모두 지우기",
+        help_3_b3: "팔로워 & 팔로잉",
+        help_3_b4: "연결",
+        help_3_b5: "저장",
+        help_4_b1: "기간",
+        help_4_b2: "전체 기간",
+        help_5_b1: "내보내기 시작",
+        help_6: "다운로드 후 압축을 풀고, 아래 파일을 끌어다 놓으세요:",
+        help_6_f1: "following.html",
+        help_6_f2: "followers_1.html",
+        help_6_tail: "(HTML 또는 JSON도 가능합니다.)",
+        help_tip: "팁: 언제든지 다시 다운로드하여 목록을 업데이트하세요 — 파일은 기기에만 남습니다.",
+        how_to_files: "파일 받는 방법",
+        upload_aria: "업로드",
+        upload_title: ".html 또는 .json Instagram 내보내기 파일을 놓으세요",
+        loaded: "로드됨: ",
+        shown: "표시됨",
+        total: "전체",
+        language: "언어",
+        lang_en: "영어",
+        lang_es: "스페인어",
+        lang_de: "독일어",
+        lang_ko: "한국어",
+        lang_id: "인도네시아어",
+        lang_ja: "일본어",
+        globe_aria: "언어 변경"
+      },
+      id: {
+        title: "Instagram Unfollowers",
+        subtitle_1: "Lacak siapa yang berhenti mengikuti — ",
+        subtitle_2: "semua pemrosesan terjadi lokal di peramban Anda",
+        your_following: "Yang Anda Ikuti (akun yang Anda ikuti)",
+        drop_following: "Mengikuti — jatuhkan file",
+        parsed: "Terbaca: ",
+        accounts: "akun",
+        your_followers: "Pengikut Anda (akun yang mengikuti Anda)",
+        drop_followers: "Pengikut — jatuhkan file",
+        stat_following: "Mengikuti",
+        stat_followers: "Pengikut",
+        stat_nfub: "Tidak mengikuti Anda kembali",
+        stat_ydfb: "Anda tidak mengikuti kembali",
+        export_summary: "Ekspor ringkasan",
+        download_nfub: "Unduh CSV “Tidak mengikuti Anda kembali”",
+        download_ydfb: "Unduh CSV “Anda tidak mengikuti kembali”",
+        tip_history: "Tips: Untuk menyimpan riwayat, ekspor ringkasan setiap kali selesai dijalankan.",
+        filter_placeholder: "Saring username…",
+        copy: "Salin",
+        copied: "Tersalin",
+        open_arrow: "buka ↗",
+        mutuals_summary: "Saling mengikuti",
+        privacy_footer: "Privasi: File tidak pernah keluar dari perangkat Anda. Parsing bersifat heuristik dan mendukung sebagian besar format ekspor Instagram.",
+        help_title: "Cara mendapatkan file Instagram Anda",
+        help_1: "Instagram → Pengaturan → ",
+        help_1_b1: "Pusat Akun Meta",
+        help_2_b1: "Informasi & izin Anda",
+        help_2_b2: "Buat ekspor",
+        help_2_b3: "Profil Instagram",
+        help_2_b4: "Ekspor ke perangkat",
+        help_3_b1: "Sesuaikan informasi",
+        help_3_b2: "Hapus semua",
+        help_3_b3: "Pengikut & Mengikuti",
+        help_3_b4: "Koneksi",
+        help_3_b5: "Simpan",
+        help_4_b1: "Rentang Tanggal",
+        help_4_b2: "Sepanjang waktu",
+        help_5_b1: "Mulai ekspor",
+        help_6: "Unduh & ekstrak; lalu jatuhkan file di bawah ini:",
+        help_6_f1: "following.html",
+        help_6_f2: "followers_1.html",
+        help_6_tail: "(HTML atau JSON juga bisa.)",
+        help_tip: "Tips: Unduh ulang kapan saja untuk memperbarui daftar — file tetap di perangkat Anda.",
+        how_to_files: "Cara mendapatkan file",
+        upload_aria: "Unggah",
+        upload_title: "Jatuhkan ekspor .html atau .json dari Instagram",
+        loaded: "Dimuat: ",
+        shown: "ditampilkan",
+        total: "total",
+        language: "Bahasa",
+        lang_en: "Inggris",
+        lang_es: "Spanyol",
+        lang_de: "Jerman",
+        lang_ko: "Korea",
+        lang_id: "Indonesia",
+        lang_ja: "Jepang",
+        globe_aria: "Ganti bahasa"
+      },
+      ja: {
+        title: "Instagram アンフォロワー",
+        subtitle_1: "誰がフォローを外したかを確認 — ",
+        subtitle_2: "すべての処理はブラウザー内でローカルに行われます",
+        your_following: "フォロー中（あなたがフォローしているアカウント）",
+        drop_following: "フォロー中 — ファイルをドロップ",
+        parsed: "解析数: ",
+        accounts: "件",
+        your_followers: "フォロワー（あなたをフォローしているアカウント）",
+        drop_followers: "フォロワー — ファイルをドロップ",
+        stat_following: "フォロー中",
+        stat_followers: "フォロワー",
+        stat_nfub: "あなたをフォローしていない",
+        stat_ydfb: "あなたがフォローしていない",
+        export_summary: "サマリーをエクスポート",
+        download_nfub: "CSV「あなたをフォローしていない」をダウンロード",
+        download_ydfb: "CSV「あなたがフォローしていない」をダウンロード",
+        tip_history: "ヒント：実行のたびにサマリーをエクスポートして履歴を残しましょう。",
+        filter_placeholder: "ユーザー名で絞り込み…",
+        copy: "コピー",
+        copied: "コピー済み",
+        open_arrow: "開く ↗",
+        mutuals_summary: "相互フォロー",
+        privacy_footer: "プライバシー：ファイルはデバイスから送信されません。解析はヒューリスティックで、ほとんどのInstagramエクスポート形式をサポートします。",
+        help_title: "Instagram ファイルの取得方法",
+        help_1: "Instagram → 設定 → ",
+        help_1_b1: "Meta アカウントセンター",
+        help_2_b1: "あなたの情報と許可",
+        help_2_b2: "エクスポートを作成",
+        help_2_b3: "Instagram プロフィール",
+        help_2_b4: "デバイスにエクスポート",
+        help_3_b1: "情報をカスタマイズ",
+        help_3_b2: "すべてクリア",
+        help_3_b3: "フォロワー & フォロー中",
+        help_3_b4: "接続",
+        help_3_b5: "保存",
+        help_4_b1: "日付範囲",
+        help_4_b2: "すべての期間",
+        help_5_b1: "エクスポートを開始",
+        help_6: "ダウンロードして解凍し、次のファイルを下にドロップ：",
+        help_6_f1: "following.html",
+        help_6_f2: "followers_1.html",
+        help_6_tail: "（HTML または JSON でも可）",
+        help_tip: "ヒント：いつでも再ダウンロードしてリストを更新できます。ファイルはデバイス内に留まります。",
+        how_to_files: "ファイルの取得方法",
+        upload_aria: "アップロード",
+        upload_title: "Instagram の .html または .json エクスポートをドロップ",
+        loaded: "読み込み済み: ",
+        shown: "表示",
+        total: "合計",
+        language: "言語",
+        lang_en: "英語",
+        lang_es: "スペイン語",
+        lang_de: "ドイツ語",
+        lang_ko: "韓国語",
+        lang_id: "インドネシア語",
+        lang_ja: "日本語",
+        globe_aria: "言語を変更"
+      }
+    };
+
+    function useI18n() {
+      const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
+      useEffect(() => {
+        localStorage.setItem("lang", lang);
+        document.documentElement.lang = lang;
+      }, [lang]);
+      const t = useCallback((k) => (STRINGS[lang] && STRINGS[lang][k]) || STRINGS.en[k] || k, [lang]);
+      return { lang, setLang, t };
+    }
 
 function HelpPopup() {
   const [open, setOpen] = useState(false);
+  const { t } = useContext(LangContext);
   return (
     <div className="relative inline-block ml-2 align-middle">
       <button
         onClick={() => setOpen(!open)}
         className="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center text-sm font-semibold hover:bg-gray-100"
-        title="How to get your files"
-        aria-label="How to get your files"
+        title={t("how_to_files")}
+        aria-label={t("how_to_files")}
       >
         ?
       </button>
       {open && (
-        <div className="absolute z-10 right-0 mt-2 w-80 bg-white border border-gray-200 rounded-2xl shadow-lg p-4 text-left text-sm leading-relaxed">
-          <h3 className="font-semibold mb-2 text-base">How to get your Instagram files</h3>
+        <div className="absolute z-50 right-0 mt-2 w-80 bg-white border border-gray-200 rounded-2xl shadow-lg p-4 text-left text-sm leading-relaxed">
+          <h3 className="font-semibold mb-2 text-base">{t("help_title")}</h3>
           <ol className="list-decimal list-inside space-y-1">
-            <li>Instagram → Settings → <span className="font-medium">Meta Account Center</span>.</li>
-            <li><span className="font-medium">Your information & permissions</span> → <span className="font-medium">Create export</span> → choose <span className="font-medium">Instagram profile</span> → <span className="font-medium">Export to device</span>.</li>
-            <li><span className="font-medium">Customize information</span> → <span className="font-medium">Clear all</span> → select only <span className="font-medium">Followers & Following</span> under <span className="font-medium">Connections</span> → <span className="font-medium">Save</span>.</li>
-            <li>Set <span className="font-medium">Date Range</span> to <span className="font-medium">All time</span>.</li>
-            <li>Click <span className="font-medium">Start export</span>.</li>
-            <li>Download & unzip; then drop the files below:
+            <li>{t("help_1")}<span className="font-medium">{t("help_1_b1")}</span>.</li>
+            <li><span className="font-medium">{t("help_2_b1")}</span> → <span className="font-medium">{t("help_2_b2")}</span> → {t("help_2_b3")} → <span className="font-medium">{t("help_2_b4")}</span>.</li>
+            <li><span className="font-medium">{t("help_3_b1")}</span> → <span className="font-medium">{t("help_3_b2")}</span> → {t("help_3_b3")} {t("help_3_b4") ? (<><span className="font-medium"></span></>) : null} <span className="font-medium">{t("help_3_b4")}</span> → <span className="font-medium">{t("help_3_b5")}</span>.</li>
+            <li>{t("help_4_b1")} <span className="font-medium">{t("help_4_b2")}</span>.</li>
+            <li>Click <span className="font-medium">{t("help_5_b1")}</span>.</li>
+            <li>{t("help_6")}
               <ul className="list-disc list-inside ml-4 mt-1">
-                <li><strong>following.html</strong></li>
-                <li><strong>followers_1.html</strong></li>
+                <li><strong>{t("help_6_f1")}</strong></li>
+                <li><strong>{t("help_6_f2")}</strong></li>
               </ul>
-              <div className="mt-1">(HTML or JSON also works.)</div>
+              <div className="mt-1">{t("help_6_tail")}</div>
             </li>
           </ol>
-          <p className="mt-3 text-xs text-gray-500">Tip: Re-download anytime to refresh your list — files stay on your device.</p>
+          <p className="mt-3 text-xs text-gray-500">{t("help_tip")}</p>
         </div>
       )}
     </div>
@@ -251,17 +628,19 @@ function makeRows(list) {
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
+  const { t } = useContext(LangContext);
   return (
     <button
       onClick={async () => {
         try { await navigator.clipboard.writeText(text || ""); setCopied(true); setTimeout(()=>setCopied(false), 1200);} catch {}
       }}
       className="px-3 py-2 rounded-xl shadow text-sm border hover:shadow-md"
-    >{copied ? "Copied" : "Copy"}</button>
+    >{copied ? t("copied") : t("copy")}</button>
   );
 }
 
 function DropZone({ label, onFiles, name, variant = "default" }) {
+  const { t } = useContext(LangContext);
   const ref = useRef(null);
   const [hover, setHover] = useState(false);
   const palette = {
@@ -293,25 +672,26 @@ function DropZone({ label, onFiles, name, variant = "default" }) {
       )}
       onClick={()=>ref.current?.click()}
       role="button"
-      aria-label={`Upload ${label}`}
-      title="Drop .html or .json exports from Instagram"
+      aria-label={`${t("upload_aria")} ${label}`}
+      title={t("upload_title")}
     >
       <input ref={ref} type="file" accept="text/html,.html,application/json,.json,text/plain,.txt" className="hidden" onChange={(e)=>onFiles(e.target.files)} />
       <div className={classNames("inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs mb-3", palette.badge)}>
         <span className="font-medium">{label}</span>
       </div>
       <div className="text-sm">Drop HTML/JSON here or click to choose</div>
-      {name && <div className="mt-2 text-xs text-black/70">Loaded: <span className="font-mono">{name}</span></div>}
+      {name && <div className="mt-2 text-xs text-black/70">{t("loaded")}<span className="font-mono">{name}</span></div>}
     </div>
   );
 }
 
 function ResultsTable({ title, items }) {
+  const { t } = useContext(LangContext);
   const [q, setQ] = useState("");
   const filtered = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (!t) return items;
-    return items.filter(x => x.includes(t));
+    const ttxt = q.trim().toLowerCase();
+    if (!ttxt) return items;
+    return items.filter(x => x.includes(ttxt));
   }, [q, items]);
 
   return (
@@ -319,12 +699,12 @@ function ResultsTable({ title, items }) {
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
           <div className="text-sm font-semibold">{title}</div>
-          <div className="text-xs text-black/60">{filtered.length} shown • {items.length} total</div>
+          <div className="text-xs text-black/60">{filtered.length} {t("shown")} • {items.length} {t("total")}</div>
         </div>
         <div className="flex items-center gap-2">
           <input
             className="border rounded-xl px-3 py-2 text-sm"
-            placeholder="Filter usernames…"
+            placeholder={t("filter_placeholder")}
             value={q}
             onChange={(e)=>setQ(e.target.value)}
           />
@@ -346,7 +726,7 @@ function ResultsTable({ title, items }) {
               aria-label={`Open @${u} on Instagram in a new tab`}
             >
               <span className="truncate">@{u}</span>
-              <span className="text-xs text-black/50">open ↗</span>
+              <span className="text-xs text-black/50">{t("open_arrow")}</span>
             </a>
           </li>
         ))}
@@ -355,7 +735,58 @@ function ResultsTable({ title, items }) {
   );
 }
 
+/* Floating language selector (mobile friendly, doesn't push title) */
+function LanguageMenu() {
+  const { lang, setLang, t } = useContext(LangContext);
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const onClick = (e) => { if (open && ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    window.addEventListener('click', onClick);
+    return () => window.removeEventListener('click', onClick);
+  }, [open]);
+
+  const options = [
+    ["en", t("lang_en")],
+    ["es", t("lang_es")],
+    ["de", t("lang_de")],
+    ["ko", t("lang_ko")],
+    ["id", t("lang_id")],
+    ["ja", t("lang_ja")]
+  ];
+
+  return (
+    <div ref={ref} className="fixed bottom-4 right-4 z-50">
+      <button
+        aria-label={t("globe_aria")}
+        title={t("language")}
+        onClick={() => setOpen(!open)}
+        className="rounded-full border shadow bg-white/90 backdrop-blur px-4 py-2 text-sm font-medium hover:shadow-md"
+      >
+        🌐 {options.find(o=>o[0]===lang)?.[1]}
+      </button>
+      {open && (
+        <div className="mt-2 bg-white border rounded-2xl shadow-lg overflow-hidden">
+          {options.map(([code, label]) => (
+            <button
+              key={code}
+              className={"block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 " + (code===lang ? "font-semibold" : "")}
+              onClick={() => { setLang(code); setOpen(false); }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
+  const i18n = useI18n();
+  const { t } = i18n;
+
   const following = useFileText(); // the accounts YOU follow
   const followers = useFileText(); // the accounts that follow YOU
 
@@ -389,106 +820,113 @@ function App() {
 
   const exportAll = () => {
     const report = [
-      `Following: ${followingArr.length}`,
-      `Followers: ${followersArr.length}`,
-      `Not following you back: ${notFollowingYouBack.length}`,
-      `You don't follow back: ${youDontFollowBack.length}`,
+      `${t("stat_following")}: ${followingArr.length}`,
+      `${t("stat_followers")}: ${followersArr.length}`,
+      `${t("stat_nfub")}: ${notFollowingYouBack.length}`,
+      `${t("stat_ydfb")}: ${youDontFollowBack.length}`,
       "",
-      "# Not following you back:",
+      `# ${t("stat_nfub")}:`,
       ...notFollowingYouBack,
       "",
-      "# You don't follow back:",
+      `# ${t("stat_ydfb")}:`,
       ...youDontFollowBack,
       "",
-      "# Mutuals:",
+      `# ${t("mutuals_summary")}:`,
       ...mutuals
     ].join("\n");
     downloadText("instagram_follow_check_report.txt", report);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 text-gray-900">
-      <div className="max-w-5xl mx-auto p-6">
-        <header className="mb-8 text-center">
-          <div className="flex items-center justify-center gap-2">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Instagram Unfollowers</h1>
-            <HelpPopup />
-          </div>
-          <p className="mt-3 text-base text-black/70 max-w-2xl mx-auto leading-relaxed">
-            Catch whoever unfollows you — <span className="font-medium text-emerald-700">all processing happens locally in your browser</span>.
-          </p>
-        </header>
-
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-white rounded-2xl shadow p-4 border">
-            <h2 className="font-semibold mb-2">Your Following (accounts you follow)</h2>
-            <DropZone label="Following — drop file" variant="following" onFiles={following.onFiles} name={following.name} />
-            {following.error && <p className="text-red-600 text-sm mt-2">{following.error}</p>}
-            <div className="text-xs text-black/60 mt-2">Parsed: <span className="font-semibold">{followingArr.length}</span> accounts</div>
-          </div>
-          <div className="bg-white rounded-2xl shadow p-4 border">
-            <h2 className="font-semibold mb-2">Your Followers (accounts following you)</h2>
-            <DropZone label="Followers — drop file" variant="followers" onFiles={followers.onFiles} name={followers.name} />
-            {followers.error && <p className="text-red-600 text-sm mt-2">{followers.error}</p>}
-            <div className="text-xs text-black/60 mt-2">Parsed: <span className="font-semibold">{followersArr.length}</span> accounts</div>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-2xl shadow p-4 border mb-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Stat label="Following" value={followingArr.length} />
-            <Stat label="Followers" value={followersArr.length} />
-            <Stat label="Not following you back" value={notFollowingYouBack.length} emphasis />
-            <Stat label="You don't follow back" value={youDontFollowBack.length} />
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
-              onClick={exportAll}
-              disabled={!hasData}
-            >Export summary</button>
-            <button
-              className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
-              onClick={() => downloadCSV('not_following_you_back.csv', makeRows(notFollowingYouBack))}
-              disabled={!notFollowingYouBack.length}
-            >Download “Not following you back” CSV</button>
-            <button
-              className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
-              onClick={() => downloadCSV('you_dont_follow_back.csv', makeRows(youDontFollowBack))}
-              disabled={!youDontFollowBack.length}
-            >Download “You don't follow back” CSV</button>
-          </div>
-          <p className="text-xs text-black/50 mt-3">Tip: To keep a history, export the summary after each run; filenames include counts and you can commit them to your personal log.</p>
-        </section>
-
-        {notFollowingYouBack.length > 0 && (
-          <div className="mb-6">
-            <ResultsTable title="Not following you back" items={notFollowingYouBack} />
-          </div>
-        )}
-
-        {youDontFollowBack.length > 0 && (
-          <div className="mb-6">
-            <ResultsTable title="You don't follow back" items={youDontFollowBack} />
-          </div>
-        )}
-
-        {mutuals.length > 0 && (
-          <div className="mb-10">
-            <details className="bg-white rounded-2xl shadow p-4 border">
-              <summary className="cursor-pointer select-none font-semibold">Mutuals ({mutuals.length})</summary>
-              <div className="mt-3">
-                <ResultsTable title="Mutuals" items={mutuals} />
+    <LangContext.Provider value={i18n}>
+      <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 text-gray-900">
+        <div className="max-w-5xl mx-auto p-6">
+          <header className="mb-8">
+            <div className="flex flex-col items-center justify-center gap-2">
+              <div className="flex items-center justify-center gap-2">
+                <h1 className="app-title text-3xl sm:text-4xl font-extrabold tracking-tight text-center">{t("title")}</h1>
+                <HelpPopup />
               </div>
-            </details>
-          </div>
-        )}
+              <p className="mt-2 text-base text-black/70 max-w-2xl mx-auto leading-relaxed text-center">
+                {t("subtitle_1")}<span className="font-medium text-emerald-700">{t("subtitle_2")}</span>.
+              </p>
+            </div>
+          </header>
 
-        <footer className="text-xs text-black/50">
-          <p>Privacy: Files never leave your device. Parsing is heuristic and aims to support most Instagram export formats. If your export looks different, paste a small sample and we can extend the parser.</p>
-        </footer>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="bg-white rounded-2xl shadow p-4 border">
+              <h2 className="font-semibold mb-2">{t("your_following")}</h2>
+              <DropZone label={t("drop_following")} variant="following" onFiles={following.onFiles} name={following.name} />
+              {following.error && <p className="text-red-600 text-sm mt-2">{following.error}</p>}
+              <div className="text-xs text-black/60 mt-2">{t("parsed")}<span className="font-semibold">{followingArr.length}</span> {t("accounts")}</div>
+            </div>
+            <div className="bg-white rounded-2xl shadow p-4 border">
+              <h2 className="font-semibold mb-2">{t("your_followers")}</h2>
+              <DropZone label={t("drop_followers")} variant="followers" onFiles={followers.onFiles} name={followers.name} />
+              {followers.error && <p className="text-red-600 text-sm mt-2">{followers.error}</p>}
+              <div className="text-xs text-black/60 mt-2">{t("parsed")}<span className="font-semibold">{followersArr.length}</span> {t("accounts")}</div>
+            </div>
+          </section>
+
+          <section className="bg-white rounded-2xl shadow p-4 border mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Stat label={t("stat_following")} value={followingArr.length} />
+              <Stat label={t("stat_followers")} value={followersArr.length} />
+              <Stat label={t("stat_nfub")} value={notFollowingYouBack.length} emphasis />
+              <Stat label={t("stat_ydfb")} value={youDontFollowBack.length} />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
+                onClick={exportAll}
+                disabled={!hasData}
+              >{t("export_summary")}</button>
+              <button
+                className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
+                onClick={() => downloadCSV('not_following_you_back.csv', makeRows(notFollowingYouBack))}
+                disabled={!notFollowingYouBack.length}
+              >{t("download_nfub")}</button>
+              <button
+                className="px-4 py-2 rounded-xl border shadow hover:shadow-md text-sm"
+                onClick={() => downloadCSV('you_dont_follow_back.csv', makeRows(youDontFollowBack))}
+                disabled={!youDontFollowBack.length}
+              >{t("download_ydfb")}</button>
+            </div>
+            <p className="text-xs text-black/50 mt-3">{t("tip_history")}</p>
+          </section>
+
+          {notFollowingYouBack.length > 0 && (
+            <div className="mb-6">
+              <ResultsTable title={t("stat_nfub")} items={notFollowingYouBack} />
+            </div>
+          )}
+
+          {youDontFollowBack.length > 0 && (
+            <div className="mb-6">
+              <ResultsTable title={t("stat_ydfb")} items={youDontFollowBack} />
+            </div>
+          )}
+
+          {mutuals.length > 0 && (
+            <div className="mb-10">
+              <details className="bg-white rounded-2xl shadow p-4 border">
+                <summary className="cursor-pointer select-none font-semibold">{t("mutuals_summary")} ({mutuals.length})</summary>
+                <div className="mt-3">
+                  <ResultsTable title={t("mutuals_summary")} items={mutuals} />
+                </div>
+              </details>
+            </div>
+          )}
+
+          <footer className="text-xs text-black/50 pb-16">
+            <p>{t("privacy_footer")}</p>
+          </footer>
+        </div>
+
+        {/* Floating language selector */}
+        <LanguageMenu />
       </div>
-    </div>
+    </LangContext.Provider>
   );
 }
 
@@ -506,8 +944,7 @@ function Stat({ label, value, emphasis }) {
       const root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(<App />);
     } catch (e) {
-      window.__showErr(e);
-
+      window.__showErr?.(e);
     }
   </script>
 </body>
